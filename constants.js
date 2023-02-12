@@ -1,0 +1,11 @@
+const GRID_SIZE = 100;
+const PAYOUT_STRUCTURE = [ 0.2, 0.2, 0.2, 0.4 ];
+const CURRENCY_UNIT = "USD";
+const CURRENCY_SYMBOL = "$";
+
+module.exports = {
+  GRID_SIZE,
+  PAYOUT_STRUCTURE,
+  CURRENCY_UNIT,
+  CURRENCY_SYMBOL
+}
