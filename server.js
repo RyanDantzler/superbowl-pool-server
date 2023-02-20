@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const httpServer = createServer();
 const io = require('socket.io')(httpServer, {
   cors: {
-    origin: ["https://socket-auth.ryandantzler.repl.co", "https://admin.socket.io"],
+    origin: ["https://superbowl-pool.ryandantzler.repl.co", "https://admin.socket.io"],
     credentials: true
   }
 });
@@ -35,9 +35,12 @@ io.on('connection', socket => {
 
   socket.on('newGame', handleNewGame);
   socket.on('joinGame', handleJoinGame);
+  socket.on('deleteGame', handleDeleteGame);
   socket.on('getGameLobbies', handleGetGameLobbies);
   socket.on('squareSelected', handleSquareSelected);
   socket.on('squareUnselected', handleSquareUnselected);
+  socket.on('toggleDemoMode', handleToggleDemoMode);
+  socket.on('simulateGame', handleSimulateGame);
   socket.on('lockBoard', handleLockBoard);
   socket.on('drawNumbers', handleDrawNumbers);
   socket.on('addCredits', handleAddCredits);
@@ -80,7 +83,7 @@ io.on('connection', socket => {
     // check if user exists
     if (!loadedUser) {
       // set new user settings
-      user.credits = 10;
+      user.credits = 0;
 
       //check if initials are unique, otherwise create unique identifer
       let identifier = user.initials;
@@ -107,6 +110,27 @@ io.on('connection', socket => {
       { "_id": state[roomId]._id },
       { $set: { players: state[roomId].players } }
     );
+  }
+
+  function handleDeleteGame() {
+    let roomId = [...socket.rooms].slice(1,)[0];
+
+    if (!state[roomId]) {
+      console.log(`Game ${roomId} not found.`);
+      //TODO: send error response
+      return;
+    }
+
+    // update game in database
+      collection.updateOne(
+        { "_id": state[roomId]._id },
+        {
+          $set: {
+            deleted: true
+          }
+        });
+
+    delete state[roomId];
   }
 
   function handleSquareSelected(data) {
@@ -245,6 +269,45 @@ io.on('connection', socket => {
     io.in(roomId).emit('boardLocked');
   }
 
+  function handleToggleDemoMode() {
+    let roomId = [...socket.rooms].slice(1,)[0];
+
+    if (!state[roomId]) {
+      console.log(`Game ${roomId} not found.`);
+      //TODO: send error response
+      return;
+    }
+    state[roomId].demoMode = !state[roomId].demoMode;
+
+    // update game in database
+    collection.updateOne(
+      { "_id": state[roomId]._id },
+      
+      { $set: { demoMode: state[roomId].demoMode } }
+    );
+    
+    io.in(roomId).emit('demoMode', state[roomId].demoMode);
+  }
+  
+  function handleSimulateGame() {
+    let roomId = [...socket.rooms].slice(1,)[0];
+
+    if (!state[roomId]) {
+      console.log(`Game ${roomId} not found.`);
+      //TODO: send error response
+      return;
+    }
+    state[roomId].demoMode = true;
+
+    // update game in database
+    collection.updateOne(
+      { "_id": state[roomId]._id },
+      { $set: { demoMode: true } }
+    );
+    
+    simulateGameStats(roomId);
+  }
+
   socket.on("disconnect", () => {
     console.log("socket.io: User disconnected: ", socket.id);
   });
@@ -258,6 +321,25 @@ function emitGameLobbies(socket) {
   socket.emit('gameLobbies', state);
 }
 
+async function simulateGameStats(roomId) {
+  let myDate = new Date("2023-02-12T23:45:00.000Z");
+  let record;
+
+  const timer = ms => new Promise(res => setTimeout(res, ms))
+
+  for (let i = 0; i < 95; i++) {
+    record = await dataCollection.findOne({ date: { $gte: myDate } });
+    myDate.setMinutes(myDate.getMinutes() + 2);
+    
+    // skip halftime delay
+    if (i == 49) {
+      myDate.setMinutes(myDate.getMinutes() + 26);
+    }
+    io.in(roomId).emit('gameDataUpdate', record.data.events[0].competitions[0]);
+    await timer(1000);
+  };
+}
+
 //TODO: emit game over notification with summary
 
 instrument(io, {
@@ -266,7 +348,7 @@ instrument(io, {
 
 async function loadGames() {
   console.log("loading games...");
-  const games = await collection.find().toArray();
+  const games = await collection.find({ deleted: false }).toArray();
 
   for (let i = 0; i < games.length; i++) {
     console.log(`${games[i].name} loaded.`);
