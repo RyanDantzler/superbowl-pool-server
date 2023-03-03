@@ -104,6 +104,7 @@ io.on('connection', socket => {
 
     socket.join(roomId);
     socket.emit('initGame', state[roomId]);
+    socket.broadcast.to(roomId).emit('newPlayer', state[roomId].players);
 
     // update game in database
     collection.updateOne(
